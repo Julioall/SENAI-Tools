@@ -2,9 +2,9 @@
 setlocal
 
 :: === CONFIGURAÇÕES ===
-set EXE_PATH=dist\main.exe
-set CERT_NAME=main
-set PFX_PASSWORD=main
+set EXE_PATH=dist\SENAI Tools.exe
+set CERT_NAME=SENAI-Tools
+set PFX_PASSWORD=SENAI-Tools
 set OPENSSL_PATH="C:\Program Files\OpenSSL-Win64\bin\openssl.exe"
 set SIGNTOOL="C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe"
 set TIMESTAMP=http://timestamp.digicert.com
