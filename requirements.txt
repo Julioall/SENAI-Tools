@@ -1,3 +1,6 @@
 pandas
 openpyxl
 odfpy
+llama-cpp-python
+requests
+py2gift
