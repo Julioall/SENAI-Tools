@@ -4,10 +4,9 @@ import ast
 import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict
 
-import requests
+from openai import OpenAI
 
 from senai_tools.tools.questionarios import prompts
 
@@ -79,31 +78,19 @@ def _extract_json(text: str) -> Dict[str, Any]:
 
 
 @dataclass
-class GGUFGenerator:
-    model_path: Path
-    n_ctx: int = 4096
-    n_threads: int | None = None
-
-    def __post_init__(self) -> None:
-        self.model_path = Path(self.model_path)
+class OpenAIGenerator:
+    api_key: str
+    model: str = "gpt-4o-mini"
 
     def generate(self, content: str, n: int, level: str, topic: str) -> Dict[str, Any]:
-        try:
-            from llama_cpp import Llama
-        except Exception as exc:  # noqa: BLE001
-            raise GenerationError(f"llama-cpp-python indisponivel: {exc}") from exc
+        api_key = self.api_key.strip()
+        if not api_key:
+            raise GenerationError("Chave da API do GPT nao informada.")
 
-        if not self.model_path.exists():
-            raise GenerationError(f"Modelo GGUF nao encontrado: {self.model_path}")
-
+        client = OpenAI(api_key=api_key)
         try:
-            llm = Llama(
-                model_path=str(self.model_path),
-                n_ctx=self.n_ctx,
-                n_threads=self.n_threads,
-                verbose=False,
-            )
-            completion = llm.create_chat_completion(
+            completion = client.chat.completions.create(
+                model=self.model,
                 messages=[
                     {"role": "system", "content": prompts.SYSTEM},
                     {"role": "user", "content": _build_user_prompt(content, n, level, topic)},
@@ -111,57 +98,22 @@ class GGUFGenerator:
                 temperature=0.2,
                 max_tokens=2048,
             )
-            text = completion["choices"][0]["message"]["content"]
         except Exception as exc:  # noqa: BLE001
-            raise GenerationError(f"Falha na geracao com GGUF: {exc}") from exc
+            raise GenerationError(f"Falha na chamada da API do GPT: {exc}") from exc
+
+        text = ""
+        try:
+            text = completion.choices[0].message.content or ""
+        except Exception:
+            pass
+
+        if not text.strip():
+            raise GenerationError("Resposta da API do GPT vazia.")
 
         return _extract_json(text)
 
 
-@dataclass
-class OllamaGenerator:
-    host: str = "http://localhost:11434"
-    model: str = "mistral:latest"
-
-    def _host_url(self, path: str) -> str:
-        base = self.host.rstrip("/")
-        return f"{base}{path}"
-
-    def generate(self, content: str, n: int, level: str, topic: str) -> Dict[str, Any]:
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": prompts.SYSTEM},
-                {"role": "user", "content": _build_user_prompt(content, n, level, topic)},
-            ],
-            "stream": False,
-        }
-        try:
-            resp = requests.post(self._host_url("/api/chat"), json=payload, timeout=120)
-        except Exception as exc:  # noqa: BLE001
-            raise GenerationError(f"Falha ao chamar Ollama: {exc}") from exc
-
-        if resp.status_code >= 400:
-            raise GenerationError(f"Ollama respondeu com status {resp.status_code}: {resp.text}")
-
-        try:
-            data = resp.json()
-        except Exception as exc:  # noqa: BLE001
-            raise GenerationError(f"Resposta Ollama nao e JSON: {exc}") from exc
-
-        content_resp = (
-            data.get("message", {}).get("content")
-            or data.get("response")
-            or "".join(chunk.get("content", "") for chunk in data.get("messages", []))
-        )
-        if not content_resp:
-            raise GenerationError("Resposta Ollama vazia ou sem campo 'message.content'.")
-
-        return _extract_json(content_resp)
-
-
 __all__ = [
-    "GGUFGenerator",
-    "OllamaGenerator",
+    "OpenAIGenerator",
     "GenerationError",
 ]

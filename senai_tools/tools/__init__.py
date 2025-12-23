@@ -17,7 +17,7 @@ def get_tools() -> list[ToolDefinition]:
         ToolDefinition(
             id="questionarios_gift",
             name="Gerador de Questionarios (GIFT)",
-            description="Gera questionarios via LLM e exporta no formato Moodle GIFT.",
+            description="Gera questionarios via API do GPT e exporta no formato Moodle GIFT.",
             frame_factory=QuestionariosGiftFrame,
         ),
     ]

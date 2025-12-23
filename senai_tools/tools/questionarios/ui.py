@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from typing import Callable
 
 from senai_tools.tools.questionarios.exporter import to_gift
-from senai_tools.tools.questionarios.generator import (
-    GGUFGenerator,
-    GenerationError,
-    OllamaGenerator,
-)
+from senai_tools.tools.questionarios.generator import GenerationError, OpenAIGenerator
 from senai_tools.tools.questionarios.validator import ValidationError, validate_quiz
 
 
@@ -28,14 +26,8 @@ class QuestionariosGiftFrame(ttk.Frame):
         self.topic_var = tk.StringVar()
         self.level_var = tk.StringVar(value="basico")
         self.num_questions_var = tk.IntVar(value=5)
-        self.backend_var = tk.StringVar(value="GGUF")
-
-        self.gguf_path_var = tk.StringVar()
-        self.n_ctx_var = tk.StringVar(value="4096")
-        self.n_threads_var = tk.StringVar()
-
-        self.ollama_host_var = tk.StringVar(value="http://localhost:11434")
-        self.ollama_model_var = tk.StringVar(value="mistral:latest")
+        self.api_key_var = tk.StringVar(value=os.getenv("OPENAI_API_KEY", ""))
+        self.api_model_var = tk.StringVar(value="gpt-4o-mini")
 
         self.progress_var = tk.DoubleVar(value=0)
         self.queue: queue.Queue = queue.Queue()
@@ -68,21 +60,26 @@ class QuestionariosGiftFrame(ttk.Frame):
             row=0, column=5, sticky="w"
         )
 
-        # Backend
-        ttk.Label(top_frame, text="Backend:").grid(row=1, column=0, sticky="w", pady=(5, 0))
-        backend_cb = ttk.Combobox(top_frame, textvariable=self.backend_var, values=["GGUF", "Ollama"])
-        backend_cb.state(["readonly"])
-        backend_cb.grid(row=1, column=1, sticky="we", pady=(5, 0))
-        backend_cb.bind("<<ComboboxSelected>>", lambda _: self._toggle_backend_frames())
-
         top_frame.columnconfigure(1, weight=1)
         top_frame.columnconfigure(3, weight=1)
 
-        # Backend configs
-        self.backend_frames = {}
-        self.backend_frames["GGUF"] = self._build_gguf_frame(container)
-        self.backend_frames["Ollama"] = self._build_ollama_frame(container)
-        self._toggle_backend_frames()
+        # Config API GPT
+        config_frame = ttk.LabelFrame(container, text="Config. GPT (API)")
+        config_frame.pack(fill="x", pady=(0, 8))
+
+        ttk.Label(config_frame, text="API key:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        ttk.Entry(config_frame, textvariable=self.api_key_var, show="*").grid(row=0, column=1, sticky="we", padx=5, pady=2)
+
+        ttk.Label(config_frame, text="Modelo:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        ttk.Entry(config_frame, textvariable=self.api_model_var).grid(row=1, column=1, sticky="we", padx=5, pady=2)
+
+        ttk.Label(
+            config_frame,
+            text="Dica: defina a variavel OPENAI_API_KEY para preencher automaticamente.",
+            style="SubTitle.TLabel",
+        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=(0, 4))
+
+        config_frame.columnconfigure(1, weight=1)
 
         # Conteudo base + botoes
         content_frame = ttk.LabelFrame(container, text="Conteudo base")
@@ -132,41 +129,6 @@ class QuestionariosGiftFrame(ttk.Frame):
         prev_scroll.pack(fill="y", side="right", pady=5)
         self.preview_text.configure(yscrollcommand=prev_scroll.set)
 
-    def _build_gguf_frame(self, parent: ttk.Frame) -> ttk.Frame:
-        frame = ttk.LabelFrame(parent, text="Config. GGUF (llama-cpp-python)")
-
-        ttk.Label(frame, text="Modelo (.gguf):").grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        ttk.Entry(frame, textvariable=self.gguf_path_var).grid(row=0, column=1, sticky="we", padx=5, pady=2)
-        ttk.Button(frame, text="Selecionar", command=self._on_select_gguf).grid(row=0, column=2, padx=5, pady=2)
-
-        ttk.Label(frame, text="n_ctx:").grid(row=1, column=0, sticky="e", padx=5, pady=2)
-        ttk.Entry(frame, textvariable=self.n_ctx_var, width=8).grid(row=1, column=1, sticky="w", padx=5, pady=2)
-        ttk.Label(frame, text="n_threads:").grid(row=1, column=2, sticky="e", padx=5, pady=2)
-        ttk.Entry(frame, textvariable=self.n_threads_var, width=8).grid(row=1, column=3, sticky="w", padx=5, pady=2)
-
-        frame.columnconfigure(1, weight=1)
-        return frame
-
-    def _build_ollama_frame(self, parent: ttk.Frame) -> ttk.Frame:
-        frame = ttk.LabelFrame(parent, text="Config. Ollama (HTTP)")
-
-        ttk.Label(frame, text="Host:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        ttk.Entry(frame, textvariable=self.ollama_host_var).grid(row=0, column=1, sticky="we", padx=5, pady=2)
-
-        ttk.Label(frame, text="Model:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        ttk.Entry(frame, textvariable=self.ollama_model_var).grid(row=1, column=1, sticky="we", padx=5, pady=2)
-
-        frame.columnconfigure(1, weight=1)
-        return frame
-
-    def _toggle_backend_frames(self) -> None:
-        chosen = self.backend_var.get()
-        for name, frame in self.backend_frames.items():
-            if chosen == name:
-                frame.pack(fill="x", pady=(8, 0))
-            else:
-                frame.pack_forget()
-
     # ------------------------------------------------------------------ util
     def _append_log(self, message: str) -> None:
         self.log_text.configure(state="normal")
@@ -185,6 +147,23 @@ class QuestionariosGiftFrame(ttk.Frame):
         self.preview_text.insert("end", text)
         self.preview_text.configure(state="disabled")
 
+    def _read_file_text(self, path: Path) -> str:
+        """Extrai texto de txt/md/pdf/doc/docx para popular o campo de conteudo."""
+        suffix = path.suffix.lower()
+
+        def _read_plain(p: Path) -> str:
+            return p.read_text(encoding="utf-8", errors="ignore")
+
+        parsers: dict[str, Callable[[Path], str]] = {
+            ".txt": _read_plain,
+            ".md": _read_plain,
+            ".pdf": self._read_pdf,
+            ".doc": self._read_docx_like,
+            ".docx": self._read_docx_like,
+        }
+        parser = parsers.get(suffix, _read_plain)
+        return parser(path)
+
     def _set_running(self, running: bool) -> None:
         state = "disabled" if running else "!disabled"
         for btn in self._action_buttons:
@@ -197,29 +176,52 @@ class QuestionariosGiftFrame(ttk.Frame):
         else:
             self.progressbar.stop()
 
+    def _read_pdf(self, path: Path) -> str:
+        try:
+            from pypdf import PdfReader
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError("Dependencia 'pypdf' nao encontrada para leitura de PDF.") from exc
+
+        reader = PdfReader(str(path))
+        chunks: list[str] = []
+        for page in reader.pages:
+            try:
+                chunks.append(page.extract_text() or "")
+            except Exception:
+                continue
+        text = "\n\n".join(chunk.strip() for chunk in chunks if chunk and chunk.strip())
+        if not text:
+            raise RuntimeError("Nao foi possivel extrair texto do PDF.")
+        return text
+
+    def _read_docx_like(self, path: Path) -> str:
+        try:
+            from docx import Document
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError("Dependencia 'python-docx' nao encontrada para leitura de DOC/DOCX.") from exc
+
+        doc = Document(str(path))
+        parts = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+        text = "\n\n".join(parts)
+        if not text:
+            raise RuntimeError("Nao foi possivel extrair texto do DOC/DOCX.")
+        return text
+
     # ------------------------------------------------------------------ handlers
     def _on_load_file(self) -> None:
         path = filedialog.askopenfilename(
             title="Selecione um arquivo de texto",
-            filetypes=[("Text/Markdown", "*.txt *.md"), ("Todos", "*.*")],
+            filetypes=[("Text/Markdown/PDF/DOC", "*.txt *.md *.pdf *.doc *.docx"), ("Todos", "*.*")],
         )
         if not path:
             return
         try:
-            text = Path(path).read_text(encoding="utf-8")
+            text = self._read_file_text(Path(path))
             self.content_text.delete("1.0", "end")
             self.content_text.insert("end", text)
             self._append_log(f"Conteudo carregado de {path}")
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Erro", f"Nao foi possivel ler o arquivo:\n{exc}", parent=self)
-
-    def _on_select_gguf(self) -> None:
-        path = filedialog.askopenfilename(
-            title="Selecione o modelo GGUF",
-            filetypes=[("GGUF", "*.gguf"), ("Todos", "*.*")],
-        )
-        if path:
-            self.gguf_path_var.set(path)
 
     def _on_generate(self) -> None:
         if self.worker and self.worker.is_alive():
@@ -241,41 +243,33 @@ class QuestionariosGiftFrame(ttk.Frame):
             messagebox.showwarning("Campo obrigatorio", "N de questoes invalido.", parent=self)
             return
 
-        backend = self.backend_var.get()
-        if backend == "GGUF" and not self.gguf_path_var.get().strip():
-            messagebox.showwarning("Campo obrigatorio", "Selecione um modelo GGUF.", parent=self)
+        api_key = self.api_key_var.get().strip() or os.getenv("OPENAI_API_KEY", "")
+        if not api_key:
+            messagebox.showwarning("Campo obrigatorio", "Informe a chave da API do GPT (OPENAI_API_KEY).", parent=self)
             return
-        if backend == "Ollama" and not self.ollama_host_var.get().strip():
-            messagebox.showwarning("Campo obrigatorio", "Informe o host do Ollama.", parent=self)
-            return
+        model = self.api_model_var.get().strip() or "gpt-4o-mini"
 
         params = {
             "content": content,
             "topic": topic,
             "level": level,
             "n": n,
-            "backend": backend,
+            "api_key": api_key,
+            "model": model,
         }
-        self._append_log("Iniciando geracao...")
+        self._append_log("Iniciando geracao via GPT...")
         self._set_running(True)
 
         self.worker = threading.Thread(target=self._worker_generate, args=(params,), daemon=True)
         self.worker.start()
         self.after(100, self._poll_queue)
 
-    def _build_generator(self, backend: str):
-        if backend == "GGUF":
-            n_ctx = int(self.n_ctx_var.get() or 4096)
-            n_threads = int(self.n_threads_var.get()) if self.n_threads_var.get().strip() else None
-            return GGUFGenerator(Path(self.gguf_path_var.get()), n_ctx=n_ctx, n_threads=n_threads)
-
-        host = self.ollama_host_var.get().strip() or "http://localhost:11434"
-        model = self.ollama_model_var.get().strip() or "mistral:latest"
-        return OllamaGenerator(host=host, model=model)
+    def _build_generator(self, api_key: str, model: str) -> OpenAIGenerator:
+        return OpenAIGenerator(api_key=api_key, model=model)
 
     def _worker_generate(self, params: dict) -> None:
         try:
-            generator = self._build_generator(params["backend"])
+            generator = self._build_generator(params["api_key"], params["model"])
             data = generator.generate(
                 content=params["content"],
                 n=params["n"],
