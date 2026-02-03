@@ -23,8 +23,8 @@ class SENAIToolsApp(tk.Tk):
     def __init__(self, tools: list[ToolDefinition], icon_path: Path | str | None = None):
         super().__init__()
         self.title(__app_name__)
-        self.geometry("900x600")
-        self.minsize(780, 520)
+        self.geometry("700x500")
+        self.minsize(600, 320)
 
         self._tools = tools
         self._configure_style()
@@ -46,6 +46,15 @@ class SENAIToolsApp(tk.Tk):
         style.configure("Title.TLabel", background=bg, font=("Segoe UI", 13, "bold"))
         style.configure("SubTitle.TLabel", background=bg, font=("Segoe UI", 9, "italic"))
         style.configure("TButton", padding=6, font=("Segoe UI", 9))
+        
+        # Estilo verde para botão de processar
+        style.configure("Green.TButton", padding=6, font=("Segoe UI", 9))
+        style.map(
+            "Green.TButton",
+            background=[("!active", "#27ae60"), ("active", "#229954"), ("pressed", "#1e8449")],
+            foreground=[("!active", "white"), ("active", "white")]
+        )
+        
         style.configure("TEntry", padding=3)
         style.configure("TNotebook", background=bg)
         style.configure("TNotebook.Tab", padding=(12, 6))
